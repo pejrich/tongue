@@ -16,9 +16,7 @@ defmodule Tongue.MixProject do
   end
 
   def application do
-    [
-      mod: {Tongue.App, []}
-    ]
+    []
   end
 
   defp deps do

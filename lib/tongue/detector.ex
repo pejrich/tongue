@@ -1,8 +1,6 @@
 defmodule Tongue.Detector do
   @moduledoc false
 
-  use GenServer
-
   @n_gram 3
   @n_trial 7
   @alpha_default 0.5
@@ -52,7 +50,7 @@ defmodule Tongue.Detector do
               NGram.KANJI_4_10 NGram.KANJI_4_16 NGram.KANJI_4_17 NGram.KANJI_4_18 NGram.KANJI_4_22
               NGram.KANJI_4_24 NGram.KANJI_4_28 NGram.KANJI_4_34 NGram.KANJI_4_39 NGram.KANJI_5_10
               NGram.KANJI_5_11 NGram.KANJI_5_12 NGram.KANJI_5_13 NGram.KANJI_5_14 NGram.KANJI_5_18
-              NGram.KANJI_5_26 NGram.KANJI_5_29 NGram.KANJI_5_34 NGram.KANJI_5_39 NGram.KANJI_6_0 
+              NGram.KANJI_5_26 NGram.KANJI_5_29 NGram.KANJI_5_34 NGram.KANJI_5_39 NGram.KANJI_6_0
               NGram.KANJI_6_3  NGram.KANJI_6_9  NGram.KANJI_6_10 NGram.KANJI_6_11 NGram.KANJI_6_12
               NGram.KANJI_6_16 NGram.KANJI_6_18 NGram.KANJI_6_20 NGram.KANJI_6_21 NGram.KANJI_6_22
               NGram.KANJI_6_23 NGram.KANJI_6_25 NGram.KANJI_6_28 NGram.KANJI_6_29 NGram.KANJI_6_30
@@ -73,66 +71,30 @@ defmodule Tongue.Detector do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  def init(_) do
-    profiles =
-      :tongue
-      |> Application.app_dir("priv/profiles.binary")
-      |> File.read!()
-      |> :erlang.binary_to_term()
-      |> Map.get(:ngrams_frequencies)
-      |> subset(Application.get_env(:tongue, :languages))
+  @ngram_frequencies :tongue
+                     |> Application.app_dir("priv/profiles.binary")
+                     |> File.read!()
+                     |> :erlang.binary_to_term()
+                     |> Map.get(:ngrams_frequencies)
 
-    {:ok, profiles}
-  end
+  @languages @builtin_languages
+
+  def ngram_frequencies, do: @ngram_frequencies
+  def languages, do: @languages
 
   def detect(text) do
-    GenServer.call(__MODULE__, {:detect, text})
-  end
-
-  def languages() do
-    GenServer.call(__MODULE__, :languages)
-  end
-
-  def handle_call(:languages, _from, {languages, ngram_frequencies}) do
-    {:reply, languages, {languages, ngram_frequencies}}
-  end
-
-  def handle_call({:detect, text}, _from, {languages, ngram_frequencies}) do
     # Cleaning text to detect
     # (eliminate URL, e-mail address and Latin sentence if it is not written in Latin alphabet).
 
-    probabilities =
-      text
-      |> String.replace(~r(https?://[-_.?&~;+=/#0-9A-Za-z]{1,2076}), " ")
-      |> String.replace(~r([-_.0-9A-Za-z]{1,64}@[-_0-9A-Za-z]{1,255}[-_.0-9A-Za-z]{1,255}), " ")
-      |> String.to_charlist()
-      |> clean
-      |> normalize
-      |> extract_ngrams(ngram_frequencies)
-      |> calculate_probabilities(languages, ngram_frequencies)
-      |> sort_probabilities(languages)
-
-    {:reply, probabilities, {languages, ngram_frequencies}}
-  end
-
-  def subset(ngram_frequencies, languages) when is_nil(languages) do
-    {@builtin_languages, ngram_frequencies}
-  end
-
-  def subset(ngram_frequencies, languages) do
-    new_ngram_frequencies =
-
-      for {ngram, frequencies} <- ngram_frequencies, into: %{} do
-        {_, frequencies} =
-          @builtin_languages
-          |> Enum.zip(frequencies)
-          |> Enum.filter(fn {language, _} -> language in languages end)
-          |> Enum.unzip
-
-        {ngram, frequencies}
-      end
-
-    {Enum.sort(languages), new_ngram_frequencies}
+    text
+    |> String.replace(~r(https?://[-_.?&~;+=/#0-9A-Za-z]{1,2076}), " ")
+    |> String.replace(~r([-_.0-9A-Za-z]{1,64}@[-_0-9A-Za-z]{1,255}[-_.0-9A-Za-z]{1,255}), " ")
+    |> String.to_charlist()
+    |> clean
+    |> normalize
+    |> extract_ngrams(ngram_frequencies())
+    |> calculate_probabilities(languages(), ngram_frequencies())
+    |> sort_probabilities(languages())
   end
 
   def clean(text) do
@@ -236,12 +198,12 @@ defmodule Tongue.Detector do
 
   def extract_ngrams(text, ngram_frequencies) when is_list(text) do
     text
-    |> extract_ngrams(ngram_frequencies, ' ', false)
+    |> extract_ngrams(ngram_frequencies, ~c" ", false)
     |> List.flatten()
   end
 
   def extract_ngrams([?\s | tail], ngram_frequencies, [?\s | _], _) do
-    extract_ngrams(tail, ngram_frequencies, ' ', false)
+    extract_ngrams(tail, ngram_frequencies, ~c" ", false)
   end
 
   def extract_ngrams([char | tail], ngram_frequencies, [?\s | _], _) do
