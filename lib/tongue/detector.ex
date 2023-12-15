@@ -10,18 +10,22 @@ defmodule Tongue.Detector do
   @convolution_threshold 0.99999
   @base_frequency 10_000
 
-  @messages "priv/messages.binary"
+  @messages "priv/messages.json"
             |> File.read!()
-            |> :erlang.binary_to_term()
+            |> Jason.decode!()
 
-  @blocks "priv/unicode_blocks.binary"
+  @blocks "priv/unicode_blocks.json"
           |> File.read!()
-          |> :erlang.binary_to_term()
+          |> Jason.decode!()
+          |> Enum.map(fn [a, b, c] -> {a, b, String.to_atom(c)} end)
 
-  @builtin_languages "priv/profiles.binary"
-                     |> File.read!()
-                     |> :erlang.binary_to_term()
-                     |> Map.get(:languages)
+  @profiles "priv/profiles.json"
+            |> File.read!()
+            |> Jason.decode!()
+  #  |> Enum.map(&String.to_atom/1)
+  @languages Map.get(@profiles, "languages") |> Enum.map(&String.to_atom/1)
+
+  @ngram_frequencies Map.get(@profiles, "ngrams_frequencies")
 
   @latin1_excluded @messages["NGram.LATIN1_EXCLUDE"]
 
@@ -71,14 +75,6 @@ defmodule Tongue.Detector do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  @ngram_frequencies :tongue
-                     |> Application.app_dir("priv/profiles.binary")
-                     |> File.read!()
-                     |> :erlang.binary_to_term()
-                     |> Map.get(:ngrams_frequencies)
-
-  @languages @builtin_languages
-
   def ngram_frequencies, do: @ngram_frequencies
   def languages, do: @languages
 
@@ -93,8 +89,8 @@ defmodule Tongue.Detector do
     |> clean
     |> normalize
     |> extract_ngrams(ngram_frequencies())
-    |> calculate_probabilities(languages(), ngram_frequencies())
-    |> sort_probabilities(languages())
+    |> calculate_probabilities(@languages, ngram_frequencies())
+    |> sort_probabilities(@languages)
   end
 
   def clean(text) do
